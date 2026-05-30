@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>midi → tab</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0a0a0a;
+  --fg: #e8e8e6;
+  --dim: #3a3a38;
+  --mid: #606060;
+  --accent: #e8e8e6;
+  --green: #7dcea0;
+  --r: 14px;
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 300;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── LAYOUT ── */
+.wrap {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 4rem 2rem 8rem;
+}
+
+/* ── HEADER ── */
+.wordmark {
+  font-family: 'DM Mono', monospace;
+  font-weight: 300;
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  color: var(--mid);
+  text-transform: lowercase;
+  margin-bottom: 4rem;
+}
+
+/* ── DROP ZONE ── */
+.drop {
+  border: 1px solid var(--dim);
+  border-radius: var(--r);
+  padding: 4rem 2rem;
+  text-align: center;
+  cursor: pointer;
+  position: relative;
+  transition: border-color 0.2s, background 0.2s;
+  user-select: none;
+}
+.drop input {
+  position: absolute; inset: 0;
+  opacity: 0; cursor: pointer; width: 100%; height: 100%;
+}
+.drop:hover, .drop.over {
+  border-color: #444;
+  background: #111;
+}
+.drop.loaded {
+  border-color: var(--dim);
+  background: transparent;
+  padding: 2rem;
+}
+
+.drop-icon {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  opacity: 0.4;
+  display: block;
+  transition: opacity 0.2s;
+}
+.drop:hover .drop-icon { opacity: 0.7; }
+
+.drop-text {
+  font-size: 0.8rem;
+  color: var(--mid);
+  letter-spacing: 0.04em;
+  line-height: 1.8;
+}
+.drop-text strong {
+  display: block;
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--fg);
+  margin-bottom: 0.25rem;
+}
+
+/* ── META BAR ── */
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--mid);
+  letter-spacing: 0.06em;
+}
+.meta .filename {
+  color: var(--fg);
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 260px;
+}
+.meta .tag {
+  background: #161616;
+  border: 1px solid var(--dim);
+  border-radius: 6px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.65rem;
+  color: var(--mid);
+}
+.meta .tag.key-tag {
+  color: var(--green);
+  border-color: #2a4035;
+  background: #0f1f18;
+}
+
+/* ── TRACK PILLS ── */
+.tracks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 1.5rem;
+}
+.t-pill {
+  background: #111;
+  border: 1px solid var(--dim);
+  border-radius: 8px;
+  padding: 0.3rem 0.7rem;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.65rem;
+  color: var(--mid);
+  cursor: pointer;
+  transition: all 0.12s;
+  letter-spacing: 0.03em;
+}
+.t-pill:hover { border-color: #555; color: var(--fg); }
+.t-pill.active {
+  background: var(--fg);
+  border-color: var(--fg);
+  color: var(--bg);
+}
+
+/* ── DIVIDER ── */
+.divider {
+  height: 1px;
+  background: var(--dim);
+  margin: 2rem 0;
+  border-radius: 1px;
+}
+
+/* ── TAB OUTPUT ── */
+.tab-section { margin-top: 0; }
+
+.tab-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  gap: 1rem;
+}
+.tab-title {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.65rem;
+  color: var(--mid);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.copy-btn {
+  background: none;
+  border: 1px solid var(--dim);
+  border-radius: 8px;
+  padding: 0.25rem 0.7rem;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.62rem;
+  color: var(--mid);
+  cursor: pointer;
+  letter-spacing: 0.06em;
+  transition: all 0.12s;
+  flex-shrink: 0;
+}
+.copy-btn:hover { border-color: #555; color: var(--fg); }
+.copy-btn.copied { border-color: var(--green); color: var(--green); }
+
+.tab-scroll {
+  overflow-x: auto;
+  border-radius: var(--r);
+  border: 1px solid #161616;
+  background: #080808;
+}
+.tab-scroll::-webkit-scrollbar { height: 3px; }
+.tab-scroll::-webkit-scrollbar-track { background: transparent; }
+.tab-scroll::-webkit-scrollbar-thumb { background: var(--dim); border-radius: 2px; }
+
+.tab-pre {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.78rem;
+  font-weight: 300;
+  line-height: 1.85;
+  white-space: pre;
+  padding: 1.5rem;
+  color: #888;
+  min-width: max-content;
+}
+.tab-pre .str-label { color: #444; }
+.tab-pre .fret-num { color: var(--fg); }
+.tab-pre .capo-line { color: var(--mid); }
+.tab-pre .comment { color: #333; }
+
+/* Fade in */
+@keyframes up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade { animation: up 0.25s ease forwards; }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="wordmark">midi → tab</div>
+
+  <!-- DROP ZONE -->
+  <div class="drop" id="drop">
+    <input type="file" accept=".mid,.midi" id="fileIn">
+    <span class="drop-icon">↑</span>
+    <div class="drop-text">
+      <strong>drop midi file</strong>
+      .mid or .midi
+    </div>
+  </div>
+
+  <!-- RESULT (hidden until file loaded) -->
+  <div id="result" class="hidden fade">
+
+    <!-- META -->
+    <div class="divider"></div>
+    <div class="meta">
+      <span class="filename" id="metaFile">—</span>
+      <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+        <span class="tag" id="metaBpm">— bpm</span>
+        <span class="tag key-tag" id="metaKey">key: —</span>
+        <span class="tag" id="metaCapo">capo: —</span>
+        <span class="tag" id="metaShape">— shape</span>
+      </div>
+    </div>
+
+    <!-- TRACKS -->
+    <div class="tracks" id="trackPills"></div>
+
+    <!-- TAB -->
+    <div class="divider"></div>
+    <div class="tab-section">
+      <div class="tab-header">
+        <span class="tab-title">guitar tab</span>
+        <button class="copy-btn" id="copyBtn" onclick="copyTab()">copy</button>
+      </div>
+      <div class="tab-scroll">
+        <div class="tab-pre" id="tabOut"></div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+<script>
+// ═══════════════════════════════════════════════════════
+// MIDI PARSER
+// ═══════════════════════════════════════════════════════
+function parseMidi(buf) {
+  const v = new DataView(buf);
+  let p = 0;
+  const u8  = () => v.getUint8(p++);
+  const u16 = () => { p+=2; return v.getUint16(p-2); };
+  const u32 = () => { p+=4; return v.getUint32(p-4); };
+  const vl  = () => { let n=0,b; do{b=u8();n=(n<<7)|(b&0x7f);}while(b&0x80); return n; };
+  const rb  = n  => { const s=p; p+=n; return new Uint8Array(buf,s,n); };
+
+  if (String.fromCharCode(...new Uint8Array(buf,0,4)) !== 'MThd')
+    throw new Error('Not a valid MIDI file');
+  p=4; u32();
+  const format = u16(), numTracks = u16(), division = u16();
+
+  const tracks = [];
+  let globalTempo = 500000;
+
+  for (let t=0; t<numTracks; t++) {
+    const id = String.fromCharCode(...new Uint8Array(buf,p,4)); p+=4;
+    const len = u32();
+    if (id !== 'MTrk') { p+=len; continue; }
+    const end = p+len;
+    let tick=0, rs=0, name=`Track ${t+1}`, tempo=globalTempo;
+    const evts=[];
+
+    while (p<end) {
+      const dt=vl(); tick+=dt;
+      let st=v.getUint8(p);
+      if (st&0x80){rs=st;p++;}else{st=rs;}
+      const ty=st&0xf0;
+
+      if (st===0xff) {
+        const mt=u8(),ml=vl(),md=rb(ml);
+        if (mt===0x03) name=String.fromCharCode(...md).replace(/\x00/g,'').trim()||name;
+        if (mt===0x51){tempo=(md[0]<<16)|(md[1]<<8)|md[2];globalTempo=tempo;}
+        if (mt===0x2f) break;
+      } else if (st===0xf0||st===0xf7) { rb(vl()); }
+      else if (ty===0x90||ty===0x80) {
+        const note=u8(),vel=u8();
+        evts.push({tick,on:(ty===0x90&&vel>0),note,vel});
+      } else if (ty===0xa0||ty===0xb0||ty===0xe0){u8();u8();}
+      else if (ty===0xc0||ty===0xd0){u8();}
+    }
+    p=end;
+
+    const notes=[],pend={};
+    for (const e of evts){
+      const k=`${e.note}`;
+      if (e.on) { pend[k]={tick:e.tick,note:e.note,vel:e.vel}; }
+      else if (pend[k]){
+        const n=pend[k];
+        notes.push({start:n.tick,end:e.tick,dur:e.tick-n.tick,note:n.note,vel:n.vel});
+        delete pend[k];
+      }
+    }
+    for (const k in pend){
+      const n=pend[k];
+      if(tick>n.tick) notes.push({start:n.tick,end:tick,dur:tick-n.tick,note:n.note,vel:n.vel});
+    }
+    tracks.push({name,notes,tempo});
+  }
+  return {format,division,tracks,tempo:globalTempo};
+}
+
+// ═══════════════════════════════════════════════════════
+// KEY DETECTION — Krumhansl-Schmuckler algorithm
+// Uses pitch-class duration weights vs. tonal profiles
+// ═══════════════════════════════════════════════════════
+const CHR = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const ENH = {'C#':'Db','D#':'Eb','F#':'Gb','G#':'Ab','A#':'Bb'};
+
+// Krumhansl-Kessler tonal hierarchy profiles (major & minor)
+const KK_MAJOR = [6.35,2.23,3.48,2.33,4.38,4.09,2.52,5.19,2.39,3.66,2.29,2.88];
+const KK_MINOR = [6.33,2.68,3.52,5.38,2.60,3.53,2.54,4.75,3.98,2.69,3.34,3.17];
+
+function krumhansl(notes) {
+  // Build pitch-class duration histogram
+  const hist = new Array(12).fill(0);
+  for (const n of notes) hist[n.note % 12] += Math.max(n.dur, 1);
+  const total = hist.reduce((a,b)=>a+b,0);
+  if (!total) return {key:'C',mode:'major',conf:0};
+
+  // Pearson correlation against all 24 keys
+  let bestR = -Infinity, bestKey = 'C', bestMode = 'major';
+
+  function pearson(a, b) {
+    const n=a.length;
+    const ma=a.reduce((s,x)=>s+x,0)/n, mb=b.reduce((s,x)=>s+x,0)/n;
+    let num=0,da=0,db=0;
+    for(let i=0;i<n;i++){
+      const ai=a[i]-ma,bi=b[i]-mb;
+      num+=ai*bi; da+=ai*ai; db+=bi*bi;
+    }
+    return (da*db)===0?0:num/Math.sqrt(da*db);
+  }
+
+  for (let root=0; root<12; root++) {
+    // Rotate profile to match root
+    const rotHist = Array.from({length:12},(_,i)=>hist[(i+root)%12]);
+    const rMaj = pearson(rotHist, KK_MAJOR);
+    const rMin = pearson(rotHist, KK_MINOR);
+    if (rMaj > bestR) { bestR=rMaj; bestKey=CHR[root]; bestMode='major'; }
+    if (rMin > bestR) { bestR=rMin; bestKey=CHR[root]; bestMode='minor'; }
+  }
+
+  return {key:bestKey, mode:bestMode, conf:bestR};
+}
+
+// For minor keys, resolve to relative major for capo calculation
+function resolveToMajor(key, mode) {
+  if (mode === 'major') return key;
+  // Relative major is 3 semitones up from natural minor root
+  const i = CHR.indexOf(key);
+  return CHR[(i+3)%12];
+}
+
+// ═══════════════════════════════════════════════════════
+// CAPO / SHAPE LOGIC
+// ═══════════════════════════════════════════════════════
+const C_KEYS = ['C','C#','D','D#','E','F','F#'];
+const G_KEYS = ['G','G#','A','A#','B'];
+const MAJ_INT = [2,2,1,2,2,2,1];
+const OPEN_MIDI = [40,45,50,55,59,64]; // E2 A2 D3 G3 B3 E4
+
+function getCapoShape(majorKey) {
+  const i = CHR.indexOf(majorKey);
+  if (C_KEYS.includes(majorKey)) return {pattern:'C', capo:(i-0+12)%12};
+  return {pattern:'G', capo:(i-7+12)%12};
+}
+
+function getMajScale(ri) {
+  const s=[ri]; let c=ri;
+  for(let i=0;i<6;i++){c=(c+MAJ_INT[i])%12;s.push(c);}
+  return s;
+}
+
+// ═══════════════════════════════════════════════════════
+// FRET FINDER
+// ═══════════════════════════════════════════════════════
+function findFret(midiNote, capo) {
+  let best=null, bestScore=Infinity;
+  for (let s=0; s<6; s++) {
+    for (let f=0; f<=12; f++) {
+      const sounding = OPEN_MIDI[s] + capo + f;
+      if (sounding === midiNote) {
+        // Prefer: low fret, higher strings for melody (5=high e, 0=low E)
+        const score = f * 1.0 + (5-s) * 0.5;
+        if (score < bestScore) { bestScore=score; best={s,f}; }
+      }
+    }
+  }
+  if (!best) {
+    // Octave fallback
+    const target = midiNote % 12;
+    for (let s=0; s<6; s++) {
+      for (let f=0; f<=12; f++) {
+        const sc = (OPEN_MIDI[s]+capo+f)%12;
+        if (sc === target) {
+          const score = f * 1.0 + (5-s) * 0.5;
+          if (score < bestScore) { bestScore=score; best={s,f}; }
+        }
+      }
+    }
+  }
+  return best;
+}
+
+// ═══════════════════════════════════════════════════════
+// TAB RENDERER
+// ═══════════════════════════════════════════════════════
+function buildTab(track, capo, key, mode, bpm, division) {
+  const notes = [...track.notes].sort((a,b)=>a.start-b.start);
+  if (!notes.length) return '— no notes in track —';
+
+  const maxTick = Math.max(...notes.map(n=>n.end));
+  const Q = division / 4; // 16th note
+  const totalCols = Math.ceil(maxTick / Q) + 4;
+
+  // grid[string 0=lowE .. 5=highE][col]
+  const grid = Array.from({length:6}, () => new Array(totalCols).fill(null));
+
+  for (const n of notes) {
+    const col = Math.round(n.start / Q);
+    if (col >= totalCols) continue;
+    const pos = findFret(n.note, capo);
+    if (!pos) continue;
+    // Only place if cell is empty
+    if (grid[pos.s][col] === null) grid[pos.s][col] = pos.f;
+  }
+
+  // Build ASCII tab: display order high→low: e B G D A E
+  // rows in display: index 5,4,3,2,1,0
+  const rowOrder   = [5,4,3,2,1,0];
+  const rowLabels  = ['e','B','G','D','A','E'];
+  const COLS = 60;
+
+  const relMinor = CHR[(CHR.indexOf(key)+9)%12];
+  const dispKey = mode === 'minor'
+    ? `${key} minor  (relative: ${CHR[(CHR.indexOf(key)+3)%12]} major)`
+    : `${key} major  (relative minor: ${relMinor})`;
+
+  let out = '';
+  out += `; key    ${dispKey}\n`;
+  out += `; capo   ${capo === 0 ? 'none' : 'fret '+capo}\n`;
+  out += `; shape  open ${capo===0?key:'C'==='C'?'C':'G'} — ${capo===0?key:(C_KEYS.includes(CHR[(CHR.indexOf(key))%12])?'C':'G')} major shape\n`;
+  out += `; bpm    ${bpm}\n`;
+  out += '\n';
+
+  let col = 0;
+  while (col < totalCols) {
+    const end = Math.min(col + COLS, totalCols);
+    for (let ri = 0; ri < 6; ri++) {
+      const si = rowOrder[ri];
+      const lbl = rowLabels[ri];
+      let line = lbl + ' ';
+      for (let c = col; c < end; c++) {
+        const v = grid[si][c];
+        if (v === null) {
+          line += '-';
+        } else if (v >= 10) {
+          line += String(v);
+          // skip next col in display to align
+        } else {
+          line += String(v);
+        }
+      }
+      out += line + '\n';
+    }
+    out += '\n';
+    col = end;
+  }
+  return out;
+}
+
+// ═══════════════════════════════════════════════════════
+// APP STATE
+// ═══════════════════════════════════════════════════════
+let midi = null, selTrack = 0;
+let detectedKey = null, detectedMode = null;
+
+// ═══════════════════════════════════════════════════════
+// FILE HANDLING
+// ═══════════════════════════════════════════════════════
+const drop = document.getElementById('drop');
+const fileIn = document.getElementById('fileIn');
+
+fileIn.onchange = e => e.target.files[0] && load(e.target.files[0]);
+drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', e => {
+  e.preventDefault(); drop.classList.remove('over');
+  const f = e.dataTransfer.files[0]; if (f) load(f);
+});
+
+function load(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      midi = parseMidi(e.target.result);
+
+      // Detect key from all notes across all tracks combined
+      const allNotes = midi.tracks.flatMap(t => t.notes);
+      const det = krumhansl(allNotes);
+      detectedKey = det.key;
+      detectedMode = det.mode;
+
+      // Resolve to major for capo
+      const majorKey = resolveToMajor(detectedKey, detectedMode);
+      const {pattern, capo} = getCapoShape(majorKey);
+      const bpm = Math.round(60000000 / midi.tempo);
+
+      // Update drop zone
+      drop.classList.add('loaded');
+      drop.querySelector('.drop-icon').textContent = '✓';
+      drop.querySelector('.drop-text').innerHTML =
+        `<strong>${file.name}</strong>`;
+
+      // Meta
+      document.getElementById('metaFile').textContent = file.name;
+      document.getElementById('metaBpm').textContent = `${bpm} bpm`;
+
+      const keyDisplay = detectedKey + (ENH[detectedKey] ? ' / '+ENH[detectedKey] : '') + ' ' + detectedMode;
+      document.getElementById('metaKey').textContent = `key: ${keyDisplay}`;
+      document.getElementById('metaCapo').textContent = capo === 0 ? 'no capo' : `capo: ${capo}`;
+      document.getElementById('metaShape').textContent = `${pattern} shape`;
+
+      // Track pills
+      const container = document.getElementById('trackPills');
+      container.innerHTML = '';
+      let firstIdx = -1;
+      midi.tracks.forEach((tr, i) => {
+        if (!tr.notes.length) return;
+        if (firstIdx < 0) firstIdx = i;
+        const pill = document.createElement('button');
+        pill.className = 't-pill' + (i === (selTrack === 0 ? firstIdx : selTrack) ? ' active' : '');
+        pill.textContent = tr.name;
+        pill.onclick = () => {
+          selTrack = i;
+          document.querySelectorAll('.t-pill').forEach(p => p.classList.remove('active'));
+          pill.classList.add('active');
+          renderTab();
+        };
+        container.appendChild(pill);
+      });
+      if (firstIdx >= 0) selTrack = firstIdx;
+
+      // Show result
+      const result = document.getElementById('result');
+      result.classList.remove('hidden');
+      result.classList.remove('fade');
+      void result.offsetWidth;
+      result.classList.add('fade');
+
+      renderTab();
+    } catch(err) {
+      drop.querySelector('.drop-text').innerHTML =
+        `<strong style="color:#c0605a;">error</strong>${err.message}`;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function renderTab() {
+  if (!midi) return;
+  const track = midi.tracks[selTrack];
+  if (!track) return;
+  const majorKey = resolveToMajor(detectedKey, detectedMode);
+  const {pattern, capo} = getCapoShape(majorKey);
+  const bpm = Math.round(60000000 / midi.tempo);
+  const raw = buildTab(track, capo, detectedKey, detectedMode, bpm, midi.division);
+
+  // Colorize
+  const el = document.getElementById('tabOut');
+  // Apply syntax coloring via innerHTML
+  const escaped = raw.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const colored = escaped
+    .replace(/^(;.*)/gm, '<span style="color:#2a2a2a;">$1</span>')
+    .replace(/^([eBGDAe]) /gm, '<span style="color:#3a3a3a;">$1</span> ')
+    .replace(/(?<=[eBGDAe] .*)([0-9]+)/g, '<span style="color:#e8e8e6;">$1</span>');
+  el.innerHTML = colored;
+
+  // Update shape label correctly
+  document.getElementById('metaShape').textContent = `${pattern} shape`;
+}
+
+function copyTab() {
+  if (!midi) return;
+  const track = midi.tracks[selTrack];
+  const majorKey = resolveToMajor(detectedKey, detectedMode);
+  const {pattern, capo} = getCapoShape(majorKey);
+  const bpm = Math.round(60000000 / midi.tempo);
+  const raw = buildTab(track, capo, detectedKey, detectedMode, bpm, midi.division);
+  navigator.clipboard.writeText(raw).then(() => {
+    const btn = document.getElementById('copyBtn');
+    btn.textContent = 'copied';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);
+  });
+}
+</script>
+</body>
+</html>
