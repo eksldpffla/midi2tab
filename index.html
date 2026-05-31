@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>midi → tab</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:      #0a0a0a;
+  --surface: #111111;
+  --border:  #222222;
+  --dim:     #2e2e2e;
+  --mid:     #555555;
+  --sub:     #888888;
+  --fg:      #ffffff;
+  --green:   #7dcea0;
+  --r:       10px;
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 300;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 3.5rem 2rem 8rem;
+}
+
+/* ── WORDMARK ── */
+.wordmark {
+  font-family: 'DM Mono', monospace;
+  font-weight: 300;
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  color: var(--mid);
+  margin-bottom: 3rem;
+}
+
+/* ── DROP ZONE ── */
+.drop {
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 3.5rem 2rem;
+  text-align: center;
+  cursor: pointer;
+  position: relative;
+  transition: border-color 0.18s, background 0.18s;
+}
+/* Always keep input fully interactive */
+.drop input[type=file] {
+  position: absolute; inset: 0;
+  opacity: 0; cursor: pointer;
+  width: 100%; height: 100%;
+}
+.drop:hover, .drop.over {
+  border-color: var(--dim);
+  background: #0f0f0f;
+}
+/* Loaded state: compact, but still clickable */
+.drop.loaded {
+  padding: 0.9rem 1.25rem;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.drop-filename {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.drop-change {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.62rem;
+  color: var(--mid);
+  white-space: nowrap;
+  flex-shrink: 0;
+  pointer-events: none; /* let the input handle clicks */
+}
+.drop-hint {
+  font-size: 0.78rem;
+  color: var(--sub);
+  letter-spacing: 0.03em;
+}
+.drop-hint strong {
+  display: block;
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--fg);
+  margin-bottom: 0.3rem;
+}
+
+/* ── META ROW ── */
+.meta {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 1.25rem;
+}
+.tag {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.2rem 0.55rem;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.62rem;
+  color: var(--sub);
+  line-height: 1;
+}
+.tag.hi { color: var(--green); border-color: #1e3328; background: #0c1a12; }
+
+/* Editable BPM */
+.bpm-tag {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.2rem 0.55rem;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.62rem;
+  color: var(--sub);
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  cursor: text;
+  transition: border-color 0.12s;
+}
+.bpm-tag:focus-within { border-color: var(--dim); }
+.bpm-tag span { color: var(--mid); }
+.bpm-input {
+  background: none;
+  border: none;
+  outline: none;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.62rem;
+  color: var(--fg);
+  width: 3ch;
+  min-width: 3ch;
+  text-align: right;
+  -moz-appearance: textfield;
+}
+.bpm-input::-webkit-inner-spin-button,
+.bpm-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* ── DIVIDER ── */
+.div { height: 1px; background: var(--border); margin: 1.5rem 0; }
+
+/* ── PLAYER CONTROLS ── */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.play-btn {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--dim);
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: 0.6rem;
+  transition: border-color 0.12s, background 0.12s;
+  flex-shrink: 0;
+}
+.play-btn:hover { border-color: var(--sub); background: var(--surface); }
+.play-btn.playing { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+
+.progress-track {
+  flex: 1;
+  height: 2px;
+  background: var(--border);
+  border-radius: 1px;
+  position: relative;
+  cursor: pointer;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--fg);
+  border-radius: 1px;
+  width: 0%;
+  pointer-events: none;
+}
+.progress-thumb {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: var(--fg);
+  left: 0%;
+  pointer-events: none;
+}
+
+.time-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.62rem;
+  color: var(--sub);
+  min-width: 72px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* ── TAB HEADER ── */
+.tab-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+.tab-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.6rem;
+  color: var(--mid);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.copy-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.2rem 0.6rem;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.6rem;
+  color: var(--sub);
+  cursor: pointer;
+  transition: all 0.12s;
+  letter-spacing: 0.06em;
+}
+.copy-btn:hover { border-color: var(--dim); color: var(--fg); }
+.copy-btn.ok { border-color: var(--green); color: var(--green); }
+
+/* ── TAB CANVAS ── */
+.tab-canvas-wrap {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+  background: #080808;
+  cursor: pointer;
+  user-select: none;
+}
+canvas#tabCanvas { display: block; }
+
+/* ── BAR NAV ── */
+.bar-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.75rem;
+}
+.bar-btns { display: flex; gap: 0.4rem; }
+.bar-btn {
+  border: 1px solid var(--border);
+  background: none;
+  border-radius: 6px;
+  padding: 0.22rem 0.6rem;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.62rem;
+  color: var(--sub);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.bar-btn:hover { border-color: var(--dim); color: var(--fg); }
+.bar-info {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.62rem;
+  color: var(--mid);
+}
+
+.hidden { display: none !important; }
+@keyframes up { from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);} }
+.fade { animation: up 0.22s ease forwards; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="wordmark">midi → tab</div>
+
+  <!-- DROP — always interactive -->
+  <div class="drop" id="drop">
+    <input type="file" accept=".mid,.midi" id="fileIn">
+    <div class="drop-hint" id="dropHint">
+      <strong>drop midi file</strong>
+      .mid · .midi
+    </div>
+    <!-- Loaded state injected by JS into #dropLoaded -->
+    <div id="dropLoaded" class="hidden" style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:1rem;">
+      <span class="drop-filename" id="dropFilename"></span>
+      <span class="drop-change">click to change</span>
+    </div>
+  </div>
+
+  <!-- RESULT -->
+  <div id="result" class="hidden">
+
+    <!-- META -->
+    <div class="meta" id="metaRow"></div>
+
+    <div class="div"></div>
+
+    <!-- CONTROLS -->
+    <div class="controls">
+      <button class="play-btn" id="playBtn" onclick="togglePlay()">▶</button>
+      <div class="progress-track" id="progTrack">
+        <div class="progress-fill" id="progFill"></div>
+        <div class="progress-thumb" id="progThumb"></div>
+      </div>
+      <span class="time-label" id="timeLabel">0:00 / 0:00</span>
+    </div>
+
+    <!-- TAB -->
+    <div class="tab-header">
+      <span class="tab-label">guitar tab</span>
+      <button class="copy-btn" id="copyBtn" onclick="copyTab()">copy</button>
+    </div>
+    <div class="tab-canvas-wrap" id="tabWrap">
+      <canvas id="tabCanvas"></canvas>
+    </div>
+    <div class="bar-nav">
+      <div class="bar-btns">
+        <button class="bar-btn" onclick="navBar(-1)">← prev</button>
+        <button class="bar-btn" onclick="navBar(1)">next →</button>
+      </div>
+      <span class="bar-info" id="barInfo">bar 1</span>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+// MIDI PARSER
+// ═══════════════════════════════════════════════════
+function parseMidi(buf) {
+  const v = new DataView(buf);
+  let p = 0;
+  const u8  = () => v.getUint8(p++);
+  const u16 = () => { p+=2; return v.getUint16(p-2); };
+  const u32 = () => { p+=4; return v.getUint32(p-4); };
+  const vl  = () => { let n=0,b; do{b=u8();n=(n<<7)|(b&0x7f);}while(b&0x80); return n; };
+  const rb  = n  => { const s=p; p+=n; return new Uint8Array(buf,s,n); };
+
+  if (String.fromCharCode(...new Uint8Array(buf,0,4)) !== 'MThd')
+    throw new Error('Not a valid MIDI file');
+  p=4; u32();
+  const format=u16(), numTracks=u16(), division=u16();
+  const tracks=[], tempoMap=[];
+  let globalTempo=500000;
+
+  for (let t=0;t<numTracks;t++) {
+    const id=String.fromCharCode(...new Uint8Array(buf,p,4)); p+=4;
+    const len=u32();
+    if (id!=='MTrk'){p+=len;continue;}
+    const end=p+len;
+    let tick=0,rs=0,name=`Track ${t+1}`,tempo=globalTempo;
+    const evts=[];
+    while(p<end){
+      const dt=vl();tick+=dt;
+      let st=v.getUint8(p);
+      if(st&0x80){rs=st;p++;}else{st=rs;}
+      const ty=st&0xf0;
+      if(st===0xff){
+        const mt=u8(),ml=vl(),md=rb(ml);
+        if(mt===0x03)name=String.fromCharCode(...md).replace(/\x00/g,'').trim()||name;
+        if(mt===0x51){
+          const val=(md[0]<<16)|(md[1]<<8)|md[2];
+          globalTempo=val;
+          tempoMap.push({tick,tempo:val});
+        }
+        if(mt===0x2f)break;
+      }else if(st===0xf0||st===0xf7){rb(vl());}
+      else if(ty===0x90||ty===0x80){
+        const note=u8(),vel=u8();
+        evts.push({tick,on:(ty===0x90&&vel>0),note,vel});
+      }else if(ty===0xa0||ty===0xb0||ty===0xe0){u8();u8();}
+      else if(ty===0xc0||ty===0xd0){u8();}
+    }
+    p=end;
+    const notes=[],pend={};
+    for(const e of evts){
+      const k=`${e.note}`;
+      if(e.on){pend[k]={tick:e.tick,note:e.note,vel:e.vel};}
+      else if(pend[k]){
+        const n=pend[k];
+        notes.push({start:n.tick,end:e.tick,dur:e.tick-n.tick,note:n.note,vel:n.vel});
+        delete pend[k];
+      }
+    }
+    for(const k in pend){
+      const n=pend[k];
+      if(tick>n.tick)notes.push({start:n.tick,end:tick,dur:tick-n.tick,note:n.note,vel:n.vel});
+    }
+    tracks.push({name,notes});
+  }
+  if(!tempoMap.length) tempoMap.push({tick:0,tempo:globalTempo});
+  return{format,division,tracks,tempo:globalTempo,tempoMap};
+}
+
+// ═══════════════════════════════════════════════════
+// KEY DETECTION — Krumhansl-Schmuckler
+// ═══════════════════════════════════════════════════
+const CHR=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const ENH={'C#':'Db','D#':'Eb','F#':'Gb','G#':'Ab','A#':'Bb'};
+const KK_MAJ=[6.35,2.23,3.48,2.33,4.38,4.09,2.52,5.19,2.39,3.66,2.29,2.88];
+const KK_MIN=[6.33,2.68,3.52,5.38,2.60,3.53,2.54,4.75,3.98,2.69,3.34,3.17];
+
+function detectKey(notes){
+  const h=new Array(12).fill(0);
+  for(const n of notes)h[n.note%12]+=Math.max(n.dur,1);
+  function pearson(a,b){
+    const n=a.length,ma=a.reduce((s,x)=>s+x,0)/n,mb=b.reduce((s,x)=>s+x,0)/n;
+    let num=0,da=0,db=0;
+    for(let i=0;i<n;i++){const ai=a[i]-ma,bi=b[i]-mb;num+=ai*bi;da+=ai*ai;db+=bi*bi;}
+    return(da*db)===0?0:num/Math.sqrt(da*db);
+  }
+  let bestR=-Infinity,bestKey='C',bestMode='major';
+  for(let r=0;r<12;r++){
+    const rh=Array.from({length:12},(_,i)=>h[(i+r)%12]);
+    const rm=pearson(rh,KK_MAJ),rn=pearson(rh,KK_MIN);
+    if(rm>bestR){bestR=rm;bestKey=CHR[r];bestMode='major';}
+    if(rn>bestR){bestR=rn;bestKey=CHR[r];bestMode='minor';}
+  }
+  return{key:bestKey,mode:bestMode};
+}
+
+function resolveToMajor(key,mode){
+  if(mode==='major')return key;
+  return CHR[(CHR.indexOf(key)+3)%12];
+}
+
+const C_KEYS=['C','C#','D','D#','E','F','F#'];
+const MAJ_INT=[2,2,1,2,2,2,1];
+const OPEN_MIDI=[40,45,50,55,59,64];
+
+function getCapoShape(majorKey){
+  const i=CHR.indexOf(majorKey);
+  if(C_KEYS.includes(majorKey))return{pattern:'C',capo:i%12};
+  return{pattern:'G',capo:(i-7+12)%12};
+}
+
+function findFret(midiNote,capo){
+  let best=null,bestScore=Infinity;
+  for(let s=0;s<6;s++){
+    for(let f=0;f<=12;f++){
+      if(OPEN_MIDI[s]+capo+f===midiNote){
+        const score=f*1.0+(5-s)*0.5;
+        if(score<bestScore){bestScore=score;best={s,f};}
+      }
+    }
+  }
+  if(!best){
+    const target=midiNote%12;
+    for(let s=0;s<6;s++){
+      for(let f=0;f<=12;f++){
+        if((OPEN_MIDI[s]+capo+f)%12===target){
+          const score=f*1.0+(5-s)*0.5;
+          if(score<bestScore){bestScore=score;best={s,f};}
+        }
+      }
+    }
+  }
+  return best;
+}
+
+// ═══════════════════════════════════════════════════
+// TAB DATA
+// ═══════════════════════════════════════════════════
+function buildTabData(track,capo,division){
+  const notes=[...track.notes].sort((a,b)=>a.start-b.start);
+  if(!notes.length)return null;
+  const maxTick=Math.max(...notes.map(n=>n.end));
+  const Q=division/4;
+  const totalCols=Math.ceil(maxTick/Q)+8;
+  const ticksPerBar=division*4;
+  const grid=Array.from({length:6},()=>new Array(totalCols).fill(null));
+  const colTick=Array.from({length:totalCols},(_,i)=>i*Q);
+  for(const n of notes){
+    const col=Math.round(n.start/Q);
+    if(col>=totalCols)continue;
+    const pos=findFret(n.note,capo);
+    if(!pos)continue;
+    if(grid[pos.s][col]===null)grid[pos.s][col]=pos.f;
+  }
+  const colsPerBar=Math.round(ticksPerBar/Q);
+  const totalBars=Math.ceil(totalCols/colsPerBar);
+  return{grid,colTick,totalCols,colsPerBar,totalBars,Q,ticksPerBar,maxTick};
+}
+
+// ═══════════════════════════════════════════════════
+// CANVAS RENDERER
+// ═══════════════════════════════════════════════════
+const STRING_LABELS=['e','B','G','D','A','E'];
+const ROW_ORDER=[5,4,3,2,1,0];
+const FONT='\'DM Mono\', monospace';
+const ROW_H=22, PAD_T=18, PAD_B=18, PAD_L=32, COL_W=14, BARS_VIS=4;
+
+function canvasH(){ return PAD_T+6*ROW_H+PAD_B; }
+
+function drawTab(){
+  const canvas=document.getElementById('tabCanvas');
+  const wrap=document.getElementById('tabWrap');
+  const W=wrap.clientWidth||860;
+  const H=canvasH();
+  canvas.width=W; canvas.height=H;
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#080808'; ctx.fillRect(0,0,W,H);
+  if(!tabData)return;
+
+  const{grid,colsPerBar,totalBars,totalCols}=tabData;
+  const startCol=viewBar*colsPerBar;
+
+  // String lines
+  for(let r=0;r<6;r++){
+    const y=PAD_T+r*ROW_H+ROW_H/2;
+    ctx.strokeStyle='#1e1e1e'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(PAD_L,y); ctx.lineTo(W,y); ctx.stroke();
+  }
+
+  // String labels
+  ctx.font=`300 10px ${FONT}`; ctx.textAlign='right';
+  for(let r=0;r<6;r++){
+    const y=PAD_T+r*ROW_H+ROW_H/2+3.5;
+    ctx.fillStyle='#3a3a3a';
+    ctx.fillText(STRING_LABELS[r],PAD_L-6,y);
+  }
+
+  // Bar lines + numbers
+  ctx.textAlign='center';
+  for(let b=0;b<=BARS_VIS;b++){
+    const x=PAD_L+b*colsPerBar*COL_W;
+    if(x>W)break;
+    const absBar=viewBar+b;
+    ctx.strokeStyle=b===0?'#333':'#222'; ctx.lineWidth=b===0?1.5:1;
+    ctx.beginPath(); ctx.moveTo(x,PAD_T-4); ctx.lineTo(x,PAD_T+6*ROW_H+4); ctx.stroke();
+    if(absBar<totalBars){
+      ctx.fillStyle='#282828'; ctx.font=`300 9px ${FONT}`;
+      ctx.fillText(absBar+1,x+colsPerBar*COL_W/2,PAD_T-6);
+    }
+  }
+
+  // Beat dots
+  for(let b=0;b<BARS_VIS;b++){
+    for(let beat=0;beat<4;beat++){
+      const col=b*colsPerBar+beat*(colsPerBar/4);
+      const x=PAD_L+col*COL_W;
+      if(x>W)continue;
+      ctx.fillStyle='#1c1c1c';
+      ctx.beginPath(); ctx.arc(x,PAD_T-10,2,0,Math.PI*2); ctx.fill();
+    }
+  }
+
+  // Active bar highlight
+  const phBar=Math.floor(playheadTick/tabData.ticksPerBar);
+  if(phBar>=viewBar&&phBar<viewBar+BARS_VIS){
+    const bx=PAD_L+(phBar-viewBar)*colsPerBar*COL_W;
+    ctx.fillStyle='rgba(255,255,255,0.03)';
+    ctx.beginPath();
+    ctx.roundRect?ctx.roundRect(bx,PAD_T-4,colsPerBar*COL_W,6*ROW_H+8,4):ctx.rect(bx,PAD_T-4,colsPerBar*COL_W,6*ROW_H+8);
+    ctx.fill();
+  }
+
+  // Fret numbers
+  ctx.textAlign='center';
+  for(let c=startCol;c<startCol+BARS_VIS*colsPerBar&&c<totalCols;c++){
+    const cx=PAD_L+(c-startCol)*COL_W+COL_W/2;
+    for(let r=0;r<6;r++){
+      const si=ROW_ORDER[r];
+      const val=grid[si][c];
+      if(val===null)continue;
+      const cy=PAD_T+r*ROW_H+ROW_H/2;
+      const active=isPlaying&&Math.abs(tabData.colTick[c]-playheadTick)<tabData.Q*1.5;
+      ctx.font=`${active?500:300} ${val>=10?9:11}px ${FONT}`;
+      ctx.fillStyle=active?'#ffffff':'#cccccc';
+      if(active){
+        ctx.save();
+        ctx.shadowColor='rgba(255,255,255,0.6)';
+        ctx.shadowBlur=10;
+        ctx.fillText(String(val),cx,cy+4);
+        ctx.restore();
+      }else{
+        ctx.fillText(String(val),cx,cy+4);
+      }
+    }
+  }
+
+  // Playhead
+  const phCol=tabData.colTick.findIndex((t,i)=>
+    i+1>=tabData.colTick.length||(tabData.colTick[i]<=playheadTick&&tabData.colTick[i+1]>playheadTick)
+  );
+  if(phCol>=startCol&&phCol<startCol+BARS_VIS*colsPerBar){
+    const frac=tabData.Q>0?(playheadTick-tabData.colTick[phCol])/tabData.Q:0;
+    const px=PAD_L+(phCol-startCol+frac)*COL_W;
+    ctx.strokeStyle='rgba(255,255,255,0.85)'; ctx.lineWidth=1.5;
+    ctx.shadowColor='rgba(255,255,255,0.25)'; ctx.shadowBlur=6;
+    ctx.beginPath(); ctx.moveTo(px,PAD_T-6); ctx.lineTo(px,PAD_T+6*ROW_H+6); ctx.stroke();
+    ctx.shadowBlur=0;
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// AUDIO — clean sine wave, loud
+// ═══════════════════════════════════════════════════
+let audioCtx=null, masterGain=null;
+let scheduledSources=[];
+
+function getAC(){
+  if(!audioCtx){
+    audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    masterGain=audioCtx.createGain();
+    masterGain.gain.value=1.0;
+    masterGain.connect(audioCtx.destination);
+  }
+  return audioCtx;
+}
+
+function midiToHz(m){return 440*Math.pow(2,(m-69)/12);}
+
+function playNote(freq,startTime,dur){
+  const ac=getAC();
+  const osc=ac.createOscillator();
+  osc.type='sine';
+  osc.frequency.value=freq;
+
+  const gain=ac.createGain();
+  // Fast attack, clean decay — loud but not clipping
+  gain.gain.setValueAtTime(0,startTime);
+  gain.gain.linearRampToValueAtTime(0.75,startTime+0.005);
+  gain.gain.setValueAtTime(0.75,startTime+0.01);
+  gain.gain.exponentialRampToValueAtTime(0.001,startTime+Math.max(0.12,dur*0.95));
+
+  osc.connect(gain);
+  gain.connect(masterGain);
+
+  const t1=startTime+Math.max(0.12,dur)+0.02;
+  osc.start(startTime);
+  osc.stop(t1);
+  scheduledSources.push(osc);
+}
+
+function scheduleAudio(track,capo,startTick,startTime){
+  scheduledSources.forEach(s=>{try{s.stop();}catch(e){}});
+  scheduledSources=[];
+  const ac=getAC();
+  const bpm=parseInt(document.getElementById('bpmInput').value)||120;
+  const tempo=Math.round(60000000/bpm);
+  const secPerTick=tempo/1e6/midi.division;
+  const notes=[...track.notes].filter(n=>n.start>=startTick);
+  for(const n of notes){
+    const t0=startTime+(n.start-startTick)*secPerTick;
+    const dur=n.dur*secPerTick;
+    if(t0<ac.currentTime-0.05)continue;
+    if(t0>ac.currentTime+45)continue;
+    playNote(midiToHz(n.note),t0,dur);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// PLAYBACK
+// ═══════════════════════════════════════════════════
+let tabData=null, viewBar=0, playheadTick=0;
+let isPlaying=false, playStartTime=0, playStartTick=0, animFrame=null;
+let midi=null, selTrack=0, detKey=null, detMode=null, rawTabText='';
+
+function getBpmTempo(){
+  const bpm=parseInt(document.getElementById('bpmInput').value)||120;
+  return Math.round(60000000/bpm);
+}
+
+function togglePlay(){
+  if(!tabData||!midi)return;
+  if(isPlaying){stopPlay();return;}
+  const ac=getAC();
+  if(ac.state==='suspended')ac.resume();
+  isPlaying=true;
+  playStartTime=ac.currentTime;
+  playStartTick=playheadTick;
+  document.getElementById('playBtn').textContent='■';
+  document.getElementById('playBtn').classList.add('playing');
+  const majorKey=resolveToMajor(detKey,detMode);
+  const{capo}=getCapoShape(majorKey);
+  scheduleAudio(midi.tracks[selTrack],capo,playStartTick,playStartTime);
+
+  function tick(){
+    if(!isPlaying)return;
+    const ac=getAC();
+    const tempo=getBpmTempo();
+    const secPerTick=tempo/1e6/midi.division;
+    playheadTick=playStartTick+(ac.currentTime-playStartTime)/secPerTick;
+    if(playheadTick>=tabData.maxTick+tabData.Q*4){
+      stopPlay(); playheadTick=0; updateProgress(); drawTab(); return;
+    }
+    const curBar=Math.floor(playheadTick/tabData.ticksPerBar);
+    if(curBar>=viewBar+BARS_VIS)viewBar=curBar;
+    if(curBar<viewBar)viewBar=curBar;
+    viewBar=Math.max(0,Math.min(viewBar,tabData.totalBars-BARS_VIS));
+    updateBarInfo(); updateProgress(); drawTab();
+    animFrame=requestAnimationFrame(tick);
+  }
+  animFrame=requestAnimationFrame(tick);
+}
+
+function stopPlay(){
+  isPlaying=false;
+  if(animFrame){cancelAnimationFrame(animFrame);animFrame=null;}
+  scheduledSources.forEach(s=>{try{s.stop();}catch(e){}});
+  scheduledSources=[];
+  document.getElementById('playBtn').textContent='▶';
+  document.getElementById('playBtn').classList.remove('playing');
+  drawTab();
+}
+
+function updateProgress(){
+  if(!tabData)return;
+  const pct=Math.min(100,playheadTick/(tabData.maxTick+tabData.Q*4)*100);
+  document.getElementById('progFill').style.width=pct+'%';
+  document.getElementById('progThumb').style.left=pct+'%';
+  const tempo=getBpmTempo();
+  const spt=tempo/1e6/midi.division;
+  const cur=playheadTick*spt, tot=(tabData.maxTick+tabData.Q*4)*spt;
+  document.getElementById('timeLabel').textContent=`${fmt(cur)} / ${fmt(tot)}`;
+}
+
+function fmt(s){
+  const m=Math.floor(s/60),ss=Math.floor(s%60);
+  return`${m}:${ss.toString().padStart(2,'0')}`;
+}
+
+function navBar(dir){
+  if(!tabData)return;
+  viewBar=Math.max(0,Math.min(viewBar+dir,tabData.totalBars-BARS_VIS));
+  updateBarInfo(); drawTab();
+}
+
+function updateBarInfo(){
+  if(!tabData)return;
+  const last=Math.min(viewBar+BARS_VIS,tabData.totalBars);
+  document.getElementById('barInfo').textContent=`bar ${viewBar+1} – ${last} / ${tabData.totalBars}`;
+}
+
+// ═══════════════════════════════════════════════════
+// FILE HANDLING
+// ═══════════════════════════════════════════════════
+const drop=document.getElementById('drop');
+const fileIn=document.getElementById('fileIn');
+
+fileIn.onchange=e=>{
+  if(e.target.files[0]) load(e.target.files[0]);
+  // Reset so same file can be re-selected
+  e.target.value='';
+};
+
+drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('over');});
+drop.addEventListener('dragleave',()=>drop.classList.remove('over'));
+drop.addEventListener('drop',e=>{
+  e.preventDefault(); drop.classList.remove('over');
+  const f=e.dataTransfer.files[0]; if(f) load(f);
+});
+
+function load(file){
+  const rd=new FileReader();
+  rd.onload=e=>{
+    try{
+      if(isPlaying)stopPlay();
+      midi=parseMidi(e.target.result);
+
+      // Find best track: most notes, not just first
+      const allNotes=midi.tracks.flatMap(t=>t.notes);
+      const det=detectKey(allNotes);
+      detKey=det.key; detMode=det.mode;
+
+      const majorKey=resolveToMajor(detKey,detMode);
+      const{pattern,capo}=getCapoShape(majorKey);
+      const bpm=Math.round(60000000/midi.tempo);
+
+      // Select track with most notes
+      selTrack=midi.tracks.reduce((best,tr,i)=>
+        tr.notes.length>midi.tracks[best].notes.length?i:best,0);
+
+      // Drop zone → compact loaded state
+      drop.classList.add('loaded');
+      document.getElementById('dropHint').classList.add('hidden');
+      const dl=document.getElementById('dropLoaded');
+      dl.classList.remove('hidden');
+      dl.style.display='flex';
+      document.getElementById('dropFilename').textContent=file.name;
+
+      // Meta (no track name pills)
+      const keyDisp=detKey+(ENH[detKey]?' / '+ENH[detKey]:'')+' '+detMode;
+      document.getElementById('metaRow').innerHTML=`
+        <div class="bpm-tag">
+          <input class="bpm-input" id="bpmInput" type="number"
+            min="20" max="300" value="${bpm}"
+            onchange="onBpmChange()"
+            onclick="this.select()"
+            style="width:${String(bpm).length+1}ch">
+          <span>bpm</span>
+        </div>
+        <span class="tag hi">key: ${keyDisp}</span>
+        <span class="tag">${capo===0?'no capo':'capo '+capo}</span>
+        <span class="tag">${pattern} shape</span>
+      `;
+
+      // Show result
+      const res=document.getElementById('result');
+      res.classList.remove('hidden');
+      res.classList.remove('fade');
+      void res.offsetWidth;
+      res.classList.add('fade');
+
+      buildAndDraw();
+    }catch(err){
+      document.getElementById('dropHint').innerHTML=
+        `<strong style="color:#c05050">error: ${err.message}</strong>`;
+    }
+  };
+  rd.readAsArrayBuffer(file);
+}
+
+function onBpmChange(){
+  // If playing, restart scheduling at current position with new bpm
+  if(isPlaying){
+    const ac=getAC();
+    playStartTime=ac.currentTime;
+    playStartTick=playheadTick;
+    const majorKey=resolveToMajor(detKey,detMode);
+    const{capo}=getCapoShape(majorKey);
+    scheduleAudio(midi.tracks[selTrack],capo,playStartTick,playStartTime);
+  }
+  updateProgress();
+}
+
+function buildAndDraw(){
+  if(!midi)return;
+  const track=midi.tracks[selTrack];
+  if(!track)return;
+  const majorKey=resolveToMajor(detKey,detMode);
+  const{capo}=getCapoShape(majorKey);
+  playheadTick=0; viewBar=0;
+  tabData=buildTabData(track,capo,midi.division);
+  if(!tabData)return;
+  buildRawTabText(track,capo);
+  updateProgress(); updateBarInfo();
+  setTimeout(()=>drawTab(),0);
+}
+
+function buildRawTabText(track,capo){
+  const bpm=parseInt(document.getElementById('bpmInput').value)||120;
+  const majorKey=resolveToMajor(detKey,detMode);
+  const{pattern,capo:cp}=getCapoShape(majorKey);
+  const keyStr=detKey+' '+detMode;
+  rawTabText=`; key   ${keyStr}\n; capo  ${cp===0?'none':'fret '+cp}\n; shape ${pattern} major\n; bpm   ${bpm}\n\n`;
+  const{grid,colsPerBar,totalCols}=tabData;
+  const COLS=colsPerBar*4;
+  const lbl=['e','B','G','D','A','E'];
+  const ro=[5,4,3,2,1,0];
+  let col=0;
+  while(col<totalCols){
+    const end=Math.min(col+COLS,totalCols);
+    for(let ri=0;ri<6;ri++){
+      const si=ro[ri];
+      let line=lbl[ri]+' ';
+      for(let c=col;c<end;c++) line+=(grid[si][c]===null?'-':String(grid[si][c]));
+      rawTabText+=line+'\n';
+    }
+    rawTabText+='\n';
+    col=end;
+  }
+}
+
+function copyTab(){
+  if(!rawTabText)return;
+  navigator.clipboard.writeText(rawTabText).then(()=>{
+    const b=document.getElementById('copyBtn');
+    b.textContent='copied'; b.classList.add('ok');
+    setTimeout(()=>{b.textContent='copy';b.classList.remove('ok');},1800);
+  });
+}
+
+// Seek on progress bar
+document.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('progTrack').addEventListener('click',e=>{
+    if(!tabData)return;
+    const r=e.currentTarget.getBoundingClientRect();
+    const frac=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width));
+    playheadTick=frac*(tabData.maxTick+tabData.Q*4);
+    if(isPlaying){
+      const ac=getAC();
+      playStartTime=ac.currentTime; playStartTick=playheadTick;
+      const majorKey=resolveToMajor(detKey,detMode);
+      const{capo}=getCapoShape(majorKey);
+      scheduleAudio(midi.tracks[selTrack],capo,playStartTick,playStartTime);
+    }
+    viewBar=Math.max(0,Math.min(Math.floor(playheadTick/tabData.ticksPerBar),tabData.totalBars-BARS_VIS));
+    updateBarInfo(); updateProgress(); drawTab();
+  });
+
+  document.getElementById('tabCanvas').addEventListener('click',e=>{
+    if(!tabData)return;
+    const canvas=e.currentTarget;
+    const r=canvas.getBoundingClientRect();
+    const x=e.clientX-r.left;
+    const col=Math.floor((x-PAD_L)/COL_W)+viewBar*tabData.colsPerBar;
+    if(col>=0&&col<tabData.totalCols){
+      playheadTick=tabData.colTick[col];
+      if(isPlaying){
+        const ac=getAC();
+        playStartTime=ac.currentTime; playStartTick=playheadTick;
+        const majorKey=resolveToMajor(detKey,detMode);
+        const{capo}=getCapoShape(majorKey);
+        scheduleAudio(midi.tracks[selTrack],capo,playStartTick,playStartTime);
+      }
+      updateProgress(); drawTab();
+    }
+  });
+});
+
+window.addEventListener('resize',()=>{ if(tabData)drawTab(); });
+</script>
+</body>
+</html>
